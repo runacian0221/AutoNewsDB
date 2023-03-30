@@ -110,7 +110,7 @@ class Database:
         cursor.execute(main_query)
         result = cursor.fetchall()
         for row in result:
-            print(row)
+            print(row)    
 
 if __name__ == '__main__':
     with open('./db_config', 'r') as f:
