@@ -1,1 +1,1 @@
-# AutoNewsDB
+# NewsDBProject
