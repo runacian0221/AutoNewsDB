@@ -30,6 +30,7 @@ class Database:
         
         df.fillna('', inplace=True)
 
+
         # set으로 처리, 차집합,
 
         required_columns = set(table_columns) - set(df.columns)
@@ -40,47 +41,24 @@ class Database:
         ## 클랜징 clean_title(), clean_content() 넣기 ##
 
         # 데이터 넣기 insert문
-        index = 0
-        count = 0
-        rows = []
-        # iterrows 함수 : 열 데이터를 인덱스, 시리즈로 반환
-        for i, row in df.iterrows():
-            row['main_id'] = self.MAIN_CATEGORY_DICT[row['main_category']]
-            row['sub_id'] = self.SUB_CATEGORY_DICT[row['sub_category']]
-            row['platform_id'] = self.PLATFORM_DICT[row['platform']]
-            rows.append((
-                row['main_id'],
-                row['sub_id'],
-                row['platform_id'],
-                row['title'],
-                row['writer'],
-                row['content'],
-                pd.to_datetime(row['writed_at']).strftime('%Y-%m-%d %H:%M:%S'),
-            ))
-            index += 1
+        df['main_id'] = df['main_category'].apply(lambda x: self.MAIN_CATEGORY_DICT[x])
+        df['sub_id'] = df['sub_category'].apply(lambda x: self.SUB_CATEGORY_DICT[x])
+        df['platform_id'] = df['platform'].apply(lambda x: self.PLATFORM_DICT[x])
+        df[['title','writer','content','writed_at']].values.tolist()
 
-            # 데이터가 10000개가 되면 INSERT 하기 (예시로 100개)
-            # url도 빼기
-            if index == 10000:
-                query = f"INSERT INTO news (`main_id`, `sub_id`, `platform_id`, `title`, `writer`, `content`, `writed_at`) VALUES (%s, %s, %s, %s, %s, %s, %s)"
-                cursor = self.DB.cursor()
-                cursor.executemany(query, rows)
-                self.DB.commit()
-                count += 1
-                print(f'{count}번 데이터 넣기 성공')
-                rows = []
-                index = 0
+        insert_cmd = f"INSERT INTO news ({','.join(table_columns)}) VALUES ({','.join('[%s]'*len(table_columns))})"
 
-        # 마지막에 데이터가 10000개가 안되는 나머지 데이터를 넣기
-        if index != 0:
-            query = f"INSERT INTO news (`main_id`, `sub_id`, `platform_id`, `title`, `writer`, `content`, `writed_at`) VALUES (%s, %s, %s, %s, %s, %s, %s)"
-            cursor = self.DB.cursor()
-            cursor.executemany(query, rows)
-            self.DB.commit()
-            print('나머지 데이터 넣기 성공')
-
+        
+        for i in range(len(df.values) // 10000): # 1GB RAM
+            start_idx = i * 10000
+            data = [tuple(value) for value in df.values(start_idx, start_idx + 10000)]
+            with self.connection.cursor() as cur:
+                cur.executemany(insert_cmd, data)
+            self.connection.commit()
             
-    def select_news(self, start_date=None, end_date=None, platform=None, main_category=None, sub_category = None):
+        print('Insert news done!')
+            
+    def select_news(self, start_date=None, end_date=None, platform=None, main_category=None, sub_category = None, offset = 0, limit = None):
         where_sql = []
 
         if start_date and end_date:
@@ -106,11 +84,18 @@ class Database:
         if where_sql:
             main_query += f' WHERE {" AND ".join(where_sql)}'
 
+        #if limit:
+            # main_query += f' LIMIT {limit} OFFSET {offset}'
+            # 데이터가 10000개가 넘는다면
+            # offset += limit
+            # 반복
+
         cursor = self.DB.cursor()
+        # offset, limit
         cursor.execute(main_query)
         result = cursor.fetchall()
         for row in result:
-            print(row)    
+            return result   
 
 if __name__ == '__main__':
     with open('./db_config', 'r') as f:
